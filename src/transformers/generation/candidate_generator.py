@@ -18,11 +18,13 @@ from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 import torch
 
+from ..cache_utils import DynamicCache
+from .logits_process import LogitsProcessorList, MinLengthLogitsProcessor
+
 
 if TYPE_CHECKING:
     from ..modeling_utils import PreTrainedModel
     from .configuration_utils import GenerationConfig
-    from .logits_process import LogitsProcessorList
 
 
 class CandidateGenerator:
@@ -92,9 +94,9 @@ class AssistedCandidateGenerator(CandidateGenerator):
         input_ids: torch.LongTensor,
         assistant_model: "PreTrainedModel",
         generation_config: "GenerationConfig",
-        logits_processor: "LogitsProcessorList",
         model_kwargs: Dict,
         inputs_tensor: Optional[torch.Tensor] = None,
+        logits_processor: "LogitsProcessorList" = None,
     ):
         # Make sure all data at the same device as assistant model
         device = assistant_model.device
@@ -109,7 +111,7 @@ class AssistedCandidateGenerator(CandidateGenerator):
         # Prepare the kwargs for the assistant model
         assistant_kwargs = {}
         for key, value in model_kwargs.items():  # deepcopy crashes if we attempt to copy encoder outputs with grads
-            if key not in ("encoder_outputs", "assistant_encoder_outputs"):
+            if key not in ("encoder_outputs", "assistant_encoder_outputs", "past_key_values"):
                 assistant_kwargs[key] = (
                     value.detach().to(device) if isinstance(value, torch.Tensor) else copy.deepcopy(value)
                 )
@@ -121,7 +123,7 @@ class AssistedCandidateGenerator(CandidateGenerator):
                 inputs_tensor, assistant_model.generation_config.bos_token_id, assistant_kwargs
             )
             assistant_kwargs = assistant_model._prepare_encoder_decoder_kwargs_for_generation(
-                inputs_tensor, assistant_kwargs, model_input_name
+                inputs_tensor, assistant_kwargs, model_input_name, assistant_model.generation_config
             )
         elif "encoder_outputs" in model_kwargs:
             assistant_kwargs["encoder_outputs"] = model_kwargs["encoder_outputs"]
@@ -143,10 +145,28 @@ class AssistedCandidateGenerator(CandidateGenerator):
             self.input_ids_key = "input_ids"
 
         # Prepare generation-related options.
-        self.logits_processor = logits_processor
+        self.logits_processor = logits_processor if logits_processor is not None else LogitsProcessorList()
         self.generation_config = copy.deepcopy(generation_config)
         self.generation_config.return_dict_in_generate = True
         self.generation_config.output_scores = True
+
+        # Disable sampling -- this implementation of assisted generation/speculative decoding uses the assistant
+        # greedily to maximize matches. Disables sampling-related flags to prevent warnings
+        self.generation_config.do_sample = False
+        for attr in ("temperature", "top_p", "min_p", "typical_p", "top_k", "epsilon_cutoff", "eta_cutoff"):
+            setattr(self.generation_config, attr, None)
+
+        # avoid unnecessary warnings that min_length is larger than max_new_tokens
+        # remove the `MinLengthLogitsProcessor` if exists (NOTE: no need to check for `MinNewTokensLogitsProcessor`)
+        self.main_model_min_length = self.generation_config.min_length
+        self.generation_config.min_length = 0
+        self.generation_config.min_new_tokens = None
+        for processor in self.logits_processor:
+            if type(processor) == MinLengthLogitsProcessor:
+                raise ValueError(
+                    "Passing `MinLengthLogitsProcessor` when using `assisted_generation is disabled. "
+                    "Please pass in `min_length` into `.generate()` instead"
+                )
 
     def get_candidates(self, input_ids: torch.LongTensor) -> Tuple[torch.LongTensor, Optional[torch.FloatTensor]]:
         """
@@ -166,6 +186,7 @@ class AssistedCandidateGenerator(CandidateGenerator):
         # Don't generate more than `max_length - 1` candidates since the target model generates one extra token.
         new_cur_len = input_ids.shape[-1]
         max_new_tokens = min(int(self.num_assistant_tokens), self.generation_config.max_length - new_cur_len - 1)
+        min_new_tokens = max(min(max_new_tokens, self.main_model_min_length - new_cur_len), 0)
         if max_new_tokens == 0:
             return input_ids, None
 
@@ -186,6 +207,7 @@ class AssistedCandidateGenerator(CandidateGenerator):
         # 2. Forecast next N tokens using the assistant model.
         assistant_generation_kwargs = {
             self.input_ids_key: input_ids,
+            "min_new_tokens": min_new_tokens,
             "max_new_tokens": max_new_tokens,
             "generation_config": self.generation_config,
             "logits_processor": self.logits_processor,
@@ -328,15 +350,15 @@ class PromptLookupCandidateGenerator(CandidateGenerator):
         return
 
 
-def _crop_past_key_values(model, past_key_values, maximum_length):
+def _crop_past_key_values(model, past_key_values, max_length):
     """Crops the past key values up to a certain maximum length."""
     new_past = []
     if model.config.is_encoder_decoder:
         for idx in range(len(past_key_values)):
             new_past.append(
                 (
-                    past_key_values[idx][0][:, :, :maximum_length, :],
-                    past_key_values[idx][1][:, :, :maximum_length, :],
+                    past_key_values[idx][0][:, :, :max_length, :],
+                    past_key_values[idx][1][:, :, :max_length, :],
                     past_key_values[idx][2],
                     past_key_values[idx][3],
                 )
@@ -349,8 +371,8 @@ def _crop_past_key_values(model, past_key_values, maximum_length):
         for idx in range(len(past_key_values)):
             new_past.append(
                 (
-                    past_key_values[idx][0][:, :, :maximum_length],
-                    past_key_values[idx][1][:, :maximum_length, :],
+                    past_key_values[idx][0][:, :, :max_length],
+                    past_key_values[idx][1][:, :max_length, :],
                 )
             )
         past_key_values = tuple(new_past)
@@ -360,16 +382,19 @@ def _crop_past_key_values(model, past_key_values, maximum_length):
     ):
         if model.config.multi_query:
             for idx in range(len(past_key_values)):
-                past_key_values[idx] = past_key_values[idx][:, :maximum_length, :]
+                past_key_values[idx] = past_key_values[idx][:, :max_length, :]
         else:
             for idx in range(len(past_key_values)):
-                past_key_values[idx] = past_key_values[idx][:, :, :maximum_length, :]
-    else:
+                past_key_values[idx] = past_key_values[idx][:, :, :max_length, :]
+    elif isinstance(past_key_values, DynamicCache):
+        past_key_values.crop(max_length)
+
+    elif past_key_values is not None:
         for idx in range(len(past_key_values)):
             new_past.append(
                 (
-                    past_key_values[idx][0][:, :, :maximum_length, :],
-                    past_key_values[idx][1][:, :, :maximum_length, :],
+                    past_key_values[idx][0][:, :, :max_length, :],
+                    past_key_values[idx][1][:, :, :max_length, :],
                 )
             )
         past_key_values = tuple(new_past)
