@@ -73,7 +73,6 @@ _import_structure = {
         "tool",
     ],
     "audio_utils": [],
-    "benchmark": [],
     "commands": [],
     "configuration_utils": ["PretrainedConfig"],
     "convert_graph_to_onnx": [],
@@ -477,6 +476,11 @@ _import_structure = {
     ],
     "models.glm": ["GlmConfig"],
     "models.glpn": ["GLPNConfig"],
+    "models.got_ocr2": [
+        "GotOcr2Config",
+        "GotOcr2Processor",
+        "GotOcr2VisionConfig",
+    ],
     "models.gpt2": [
         "GPT2Config",
         "GPT2Tokenizer",
@@ -709,6 +713,10 @@ _import_structure = {
         "Qwen2Config",
         "Qwen2Tokenizer",
     ],
+    "models.qwen2_5_vl": [
+        "Qwen2_5_VLConfig",
+        "Qwen2_5_VLProcessor",
+    ],
     "models.qwen2_audio": [
         "Qwen2AudioConfig",
         "Qwen2AudioEncoderConfig",
@@ -886,6 +894,7 @@ _import_structure = {
     "models.yolos": ["YolosConfig"],
     "models.yoso": ["YosoConfig"],
     "models.zamba": ["ZambaConfig"],
+    "models.zamba2": ["Zamba2Config"],
     "models.zoedepth": ["ZoeDepthConfig"],
     "onnx": [],
     "pipelines": [
@@ -1234,6 +1243,7 @@ else:
     _import_structure["models.flava"].extend(["FlavaFeatureExtractor", "FlavaImageProcessor", "FlavaProcessor"])
     _import_structure["models.fuyu"].extend(["FuyuImageProcessor", "FuyuProcessor"])
     _import_structure["models.glpn"].extend(["GLPNFeatureExtractor", "GLPNImageProcessor"])
+    _import_structure["models.got_ocr2"].extend(["GotOcr2ImageProcessor"])
     _import_structure["models.grounding_dino"].extend(["GroundingDinoImageProcessor"])
     _import_structure["models.idefics"].extend(["IdeficsImageProcessor"])
     _import_structure["models.idefics2"].extend(["Idefics2ImageProcessor"])
@@ -1243,6 +1253,7 @@ else:
     _import_structure["models.layoutlmv2"].extend(["LayoutLMv2FeatureExtractor", "LayoutLMv2ImageProcessor"])
     _import_structure["models.layoutlmv3"].extend(["LayoutLMv3FeatureExtractor", "LayoutLMv3ImageProcessor"])
     _import_structure["models.levit"].extend(["LevitFeatureExtractor", "LevitImageProcessor"])
+    _import_structure["models.llava"].append("LlavaImageProcessor")
     _import_structure["models.llava_next"].append("LlavaNextImageProcessor")
     _import_structure["models.llava_next_video"].append("LlavaNextVideoImageProcessor")
     _import_structure["models.llava_onevision"].extend(
@@ -1263,6 +1274,7 @@ else:
     _import_structure["models.pixtral"].append("PixtralImageProcessor")
     _import_structure["models.poolformer"].extend(["PoolFormerFeatureExtractor", "PoolFormerImageProcessor"])
     _import_structure["models.pvt"].extend(["PvtImageProcessor"])
+    _import_structure["models.qwen2_5_vl"].extend(["Qwen2_5_VLImageProcessor"])
     _import_structure["models.qwen2_vl"].extend(["Qwen2VLImageProcessor"])
     _import_structure["models.rt_detr"].extend(["RTDetrImageProcessor"])
     _import_structure["models.sam"].extend(["SamImageProcessor"])
@@ -1298,6 +1310,7 @@ else:
     _import_structure["models.deformable_detr"].append("DeformableDetrImageProcessorFast")
     _import_structure["models.detr"].append("DetrImageProcessorFast")
     _import_structure["models.pixtral"].append("PixtralImageProcessorFast")
+    _import_structure["models.qwen2_vl"].append("Qwen2VLImageProcessorFast")
     _import_structure["models.rt_detr"].append("RTDetrImageProcessorFast")
     _import_structure["models.vit"].append("ViTImageProcessorFast")
 
@@ -1323,8 +1336,6 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_pt_objects"] = [name for name in dir(dummy_pt_objects) if not name.startswith("_")]
 else:
     _import_structure["activations"] = []
-    _import_structure["benchmark.benchmark"] = ["PyTorchBenchmark"]
-    _import_structure["benchmark.benchmark_args"] = ["PyTorchBenchmarkArguments"]
     _import_structure["cache_utils"] = [
         "Cache",
         "CacheConfig",
@@ -2421,6 +2432,12 @@ else:
             "GLPNPreTrainedModel",
         ]
     )
+    _import_structure["models.got_ocr2"].extend(
+        [
+            "GotOcr2ForConditionalGeneration",
+            "GotOcr2PreTrainedModel",
+        ]
+    )
     _import_structure["models.gpt2"].extend(
         [
             "GPT2DoubleHeadsModel",
@@ -3277,6 +3294,13 @@ else:
             "Qwen2PreTrainedModel",
         ]
     )
+    _import_structure["models.qwen2_5_vl"].extend(
+        [
+            "Qwen2_5_VLForConditionalGeneration",
+            "Qwen2_5_VLModel",
+            "Qwen2_5_VLPreTrainedModel",
+        ]
+    )
     _import_structure["models.qwen2_audio"].extend(
         [
             "Qwen2AudioEncoder",
@@ -3978,6 +4002,14 @@ else:
             "ZambaPreTrainedModel",
         ]
     )
+    _import_structure["models.zamba2"].extend(
+        [
+            "Zamba2ForCausalLM",
+            "Zamba2ForSequenceClassification",
+            "Zamba2Model",
+            "Zamba2PreTrainedModel",
+        ]
+    )
     _import_structure["models.zoedepth"].extend(
         [
             "ZoeDepthForDepthEstimation",
@@ -4018,8 +4050,6 @@ except OptionalDependencyNotAvailable:
     _import_structure["utils.dummy_tf_objects"] = [name for name in dir(dummy_tf_objects) if not name.startswith("_")]
 else:
     _import_structure["activations_tf"] = []
-    _import_structure["benchmark.benchmark_args_tf"] = ["TensorFlowBenchmarkArguments"]
-    _import_structure["benchmark.benchmark_tf"] = ["TensorFlowBenchmark"]
     _import_structure["generation"].extend(
         [
             "TFForcedBOSTokenLogitsProcessor",
@@ -5522,6 +5552,7 @@ if TYPE_CHECKING:
     )
     from .models.glm import GlmConfig
     from .models.glpn import GLPNConfig
+    from .models.got_ocr2 import GotOcr2Config, GotOcr2Processor, GotOcr2VisionConfig
     from .models.gpt2 import (
         GPT2Config,
         GPT2Tokenizer,
@@ -5786,6 +5817,10 @@ if TYPE_CHECKING:
     from .models.pvt import PvtConfig
     from .models.pvt_v2 import PvtV2Config
     from .models.qwen2 import Qwen2Config, Qwen2Tokenizer
+    from .models.qwen2_5_vl import (
+        Qwen2_5_VLConfig,
+        Qwen2_5_VLProcessor,
+    )
     from .models.qwen2_audio import (
         Qwen2AudioConfig,
         Qwen2AudioEncoderConfig,
@@ -5991,6 +6026,7 @@ if TYPE_CHECKING:
     from .models.yolos import YolosConfig
     from .models.yoso import YosoConfig
     from .models.zamba import ZambaConfig
+    from .models.zamba2 import Zamba2Config
     from .models.zoedepth import ZoeDepthConfig
 
     # Pipelines
@@ -6319,6 +6355,7 @@ if TYPE_CHECKING:
         )
         from .models.fuyu import FuyuImageProcessor, FuyuProcessor
         from .models.glpn import GLPNFeatureExtractor, GLPNImageProcessor
+        from .models.got_ocr2 import GotOcr2ImageProcessor
         from .models.grounding_dino import GroundingDinoImageProcessor
         from .models.idefics import IdeficsImageProcessor
         from .models.idefics2 import Idefics2ImageProcessor
@@ -6334,6 +6371,7 @@ if TYPE_CHECKING:
             LayoutLMv3ImageProcessor,
         )
         from .models.levit import LevitFeatureExtractor, LevitImageProcessor
+        from .models.llava import LlavaImageProcessor
         from .models.llava_next import LlavaNextImageProcessor
         from .models.llava_next_video import LlavaNextVideoImageProcessor
         from .models.llava_onevision import LlavaOnevisionImageProcessor, LlavaOnevisionVideoProcessor
@@ -6364,6 +6402,7 @@ if TYPE_CHECKING:
             PoolFormerImageProcessor,
         )
         from .models.pvt import PvtImageProcessor
+        from .models.qwen2_5_vl import Qwen2_5_VLImageProcessor
         from .models.qwen2_vl import Qwen2VLImageProcessor
         from .models.rt_detr import RTDetrImageProcessor
         from .models.sam import SamImageProcessor
@@ -6395,6 +6434,7 @@ if TYPE_CHECKING:
         from .models.deformable_detr import DeformableDetrImageProcessorFast
         from .models.detr import DetrImageProcessorFast
         from .models.pixtral import PixtralImageProcessorFast
+        from .models.qwen2_vl import Qwen2VLImageProcessorFast
         from .models.rt_detr import RTDetrImageProcessorFast
         from .models.vit import ViTImageProcessorFast
 
@@ -6413,9 +6453,6 @@ if TYPE_CHECKING:
     except OptionalDependencyNotAvailable:
         from .utils.dummy_pt_objects import *
     else:
-        # Benchmarks
-        from .benchmark.benchmark import PyTorchBenchmark
-        from .benchmark.benchmark_args import PyTorchBenchmarkArguments
         from .cache_utils import (
             Cache,
             CacheConfig,
@@ -7323,6 +7360,10 @@ if TYPE_CHECKING:
             GLPNModel,
             GLPNPreTrainedModel,
         )
+        from .models.got_ocr2 import (
+            GotOcr2ForConditionalGeneration,
+            GotOcr2PreTrainedModel,
+        )
         from .models.gpt2 import (
             GPT2DoubleHeadsModel,
             GPT2ForQuestionAnswering,
@@ -7984,6 +8025,11 @@ if TYPE_CHECKING:
             Qwen2Model,
             Qwen2PreTrainedModel,
         )
+        from .models.qwen2_5_vl import (
+            Qwen2_5_VLForConditionalGeneration,
+            Qwen2_5_VLModel,
+            Qwen2_5_VLPreTrainedModel,
+        )
         from .models.qwen2_audio import (
             Qwen2AudioEncoder,
             Qwen2AudioForConditionalGeneration,
@@ -8524,6 +8570,12 @@ if TYPE_CHECKING:
             ZambaModel,
             ZambaPreTrainedModel,
         )
+        from .models.zamba2 import (
+            Zamba2ForCausalLM,
+            Zamba2ForSequenceClassification,
+            Zamba2Model,
+            Zamba2PreTrainedModel,
+        )
         from .models.zoedepth import (
             ZoeDepthForDepthEstimation,
             ZoeDepthPreTrainedModel,
@@ -8559,10 +8611,6 @@ if TYPE_CHECKING:
         # They will raise an import error if the user tries to instantiate / use them.
         from .utils.dummy_tf_objects import *
     else:
-        from .benchmark.benchmark_args_tf import TensorFlowBenchmarkArguments
-
-        # Benchmarks
-        from .benchmark.benchmark_tf import TensorFlowBenchmark
         from .generation import (
             TFForcedBOSTokenLogitsProcessor,
             TFForcedEOSTokenLogitsProcessor,
